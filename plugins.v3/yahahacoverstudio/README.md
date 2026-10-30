@@ -2,6 +2,22 @@
 
 本目录是 [呀哈哈封面工坊](https://github.com/justzerock/MoviePilot-Plugins) 面向 **MoviePilot V3** 的实现副本，功能与原作者 V2 版（2.2.11）保持一致，仅做 V3 合同迁移。
 
+## 支持的媒体库类型
+
+自 v3.1.0 起，除电影、剧集、合集（BoxSet）、播放列表、音乐外，以下媒体库类型也可自动生成封面：
+
+| 媒体库 | Emby/Jellyfin `CollectionType` | 筛选条目 | 素材来源 |
+| --- | --- | --- | --- |
+| 音乐视频 | `musicvideos` | `MusicVideo` | 条目自身主图 |
+| 家庭视频 | `homevideos` | `Video,Photo` | 条目主图 / 服务器生成缩略图 |
+| 照片 | `photos` | `Photo` | 照片本身（跳过相册，避免与相册封面重复） |
+
+说明：
+
+- 预览页、数量徽标（`{count}`）与媒体库筛选列表对上述类型一并生效。
+- 照片与视频素材按服务器原始大图下载时携带 `maxWidth=1920&quality=90` 限制，避免超大文件拖慢生成。
+- 入库监控：照片、家庭视频等无法被 MoviePilot 识别为媒体的内容，请使用 **Webhook 入库监控**（Emby/Jellyfin 的 `library.new` / `ItemAdded` 事件），MoviePilot 整理监控（TransferComplete）无法感知此类入库。
+
 ## 与原 V2 版的差异
 
 | 项目 | V2 原版 | 本 V3 版 |

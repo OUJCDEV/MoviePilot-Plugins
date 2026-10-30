@@ -3,11 +3,12 @@
     "name": "呀哈哈封面工坊",
     "description": "全新vue前端,支持可编辑静态封面、动态方案、历史封面、Webhook 入库监控",
     "labels": "海报,可编辑画布,封面,Emby,Jellyfin,动态",
-    "version": "3.0.0",
+    "version": "3.1.0",
     "icon": "https://raw.githubusercontent.com/justzerock/MoviePilot-Plugins/main/icons/yahaha-cover-studio.png",
     "author": "Corine",
     "level": 1,
     "history": {
+      "v3.1.0": "媒体库封面生成新增音乐视频（musicvideos）、家庭视频（homevideos）与照片（photos）库支持：自动按库类型筛选条目并取自身主图/缩略图合成封面，预览、数量徽标、Webhook/定时入库监控同步适配；照片与视频素材下载时限制尺寸避免原始大图。",
       "v3.0.0": "适配 MoviePilot V3：导入迁移到 app.sdk 稳定出口（config/events/media/services/network/plugin），事件、媒体服务器链与自有数据存储保持原有行为；索引与版本按 V3 合同重建。",
       "v2.2.11": "修复 Jellyfin 根路径 API 请求，恢复媒体库读取、素材获取与封面上传；Docker 版已使用根路径 API。",
       "v2.2.10": "修复 Vue 设置保存后 MoviePilot 定时任务未刷新、Episode 动态封面素材 ID 异常，并增强 Docker 定时任务校验与状态记录。",

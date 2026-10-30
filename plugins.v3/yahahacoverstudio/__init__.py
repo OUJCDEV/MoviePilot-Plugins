@@ -128,7 +128,7 @@ class YahahaCoverStudio(_PluginBase):
     # 插件图标
     plugin_icon = "https://raw.githubusercontent.com/justzerock/MoviePilot-Plugins/main/icons/yahaha-cover-studio.png"
     # 插件版本
-    plugin_version = "3.0.0"
+    plugin_version = "3.1.0"
     # 插件作者
     plugin_author = "Corine"
     # 作者主页
@@ -244,6 +244,20 @@ class YahahaCoverStudio(_PluginBase):
     _font_traditional_variant = "standard"
     _library_scheme_rules: List[Dict[str, Any]] = []
     _default_scheme_id = ""
+    # 专用媒体库类型（Emby/Jellyfin CollectionType）对应的条目筛选类型。
+    # 音乐视频/家庭视频/照片库的素材就是条目自身的主图或服务器缩略图。
+    _special_library_item_types = {
+        "music": "MusicAlbum,Audio",
+        "musicvideos": "MusicVideo",
+        "homevideos": "Video,Photo",
+        "photos": "Photo",
+    }
+    # 监控模式下保留各自筛选类型的媒体库（含合集/播放列表等结构化类型）。
+    _monitor_preserved_library_types = frozenset(
+        {"music", "musicvideos", "homevideos", "photos", "boxsets", "playlists"}
+    )
+    # 照片、家庭视频等素材常为原始大图，下载时限制尺寸避免超大文件。
+    _source_size_limit_params = "maxWidth=1920&quality=90"
     _preview_font_service = None
     _preview_font_paths: Dict[str, str] = {}
 
@@ -5344,7 +5358,7 @@ class YahahaCoverStudio(_PluginBase):
         elif library_type == "playlists":
             items = self.__collect_playlist_preview_items(service, library, required_items)
         else:
-            items = self.__collect_regular_preview_items(service, parent_id, required_items)
+            items = self.__collect_regular_preview_items(service, parent_id, required_items, library_type=library_type)
 
         cached_entries = self.__cache_preview_server_images(
             service,
@@ -5436,13 +5450,16 @@ class YahahaCoverStudio(_PluginBase):
                 })
         return entries
 
-    def __collect_regular_preview_items(self, service, parent_id, required_items):
+    def __collect_regular_preview_items(self, service, parent_id, required_items, library_type=None):
         items = []
         offset = 0
         batch_size = 50
         max_attempts = 20
 
-        if self._cover_style == 'static_custom':
+        preset = self._special_library_item_types.get(str(library_type or "").strip().lower())
+        if preset:
+            include_types = preset
+        elif self._cover_style == 'static_custom':
             include_types = 'Movie,Series,Episode,MusicAlbum,Audio'
         elif self.__is_single_image_style():
             include_types = {
@@ -5461,6 +5478,7 @@ class YahahaCoverStudio(_PluginBase):
                 offset=offset,
                 limit=batch_size,
                 include_types=include_types,
+                library_type=library_type,
             )
             if not batch_items:
                 break
@@ -5477,7 +5495,7 @@ class YahahaCoverStudio(_PluginBase):
             library_id = library.get("Id")
         else:
             library_id = library.get("ItemId")
-        boxsets = self.__get_items_batch(service, library_id, include_types=include_types)
+        boxsets = self.__get_items_batch(service, library_id, include_types=include_types, library_type="boxsets")
         valid_items = []
         self._seen_keys = set()
         valid_items.extend(self.__filter_valid_items(boxsets))
@@ -5486,7 +5504,7 @@ class YahahaCoverStudio(_PluginBase):
         for boxset in boxsets:
             if len(valid_items) >= required_items:
                 break
-            movies = self.__get_items_batch(service, parent_id=boxset['Id'], include_types=include_types)
+            movies = self.__get_items_batch(service, parent_id=boxset['Id'], include_types=include_types, library_type="boxsets")
             valid_items.extend(self.__filter_valid_items(movies))
         return valid_items
 
@@ -5496,7 +5514,7 @@ class YahahaCoverStudio(_PluginBase):
             library_id = library.get("Id")
         else:
             library_id = library.get("ItemId")
-        playlists = self.__get_items_batch(service, library_id, include_types=include_types)
+        playlists = self.__get_items_batch(service, library_id, include_types=include_types, library_type="playlists")
         valid_items = []
         self._seen_keys = set()
         valid_items.extend(self.__filter_valid_items(playlists))
@@ -5505,7 +5523,7 @@ class YahahaCoverStudio(_PluginBase):
         for playlist in playlists:
             if len(valid_items) >= required_items:
                 break
-            media_items = self.__get_items_batch(service, parent_id=playlist['Id'], include_types=include_types)
+            media_items = self.__get_items_batch(service, parent_id=playlist['Id'], include_types=include_types, library_type="playlists")
             valid_items.extend(self.__filter_valid_items(media_items))
         return valid_items
 
@@ -8970,6 +8988,28 @@ class YahahaCoverStudio(_PluginBase):
                                                     stop_event=self._event)
         return image_data
     
+    def __library_include_types(self, library_type: Any) -> str:
+        """按媒体库类型返回条目筛选类型。
+
+        音乐视频/家庭视频/照片等专用媒体库固定使用各自的条目类型；
+        其余类型（电影/剧集/混合）沿用样式与排序规则推导出的映射。
+        """
+        normalized = str(library_type or "").strip().lower()
+        preset = self._special_library_item_types.get(normalized)
+        if preset:
+            return preset
+        if self.__is_single_image_style():
+            return {
+                "PremiereDate": "Movie,Series",
+                "DateCreated": "Movie,Episode",
+                "Random": "Movie,Series",
+            }.get(self._sort_by, "Movie,Series")
+        # 对于多图样式，如果按最新入库排序（DateCreated），也要包含 Episode 以展示剧集的最新动态
+        if self._sort_by == "DateCreated":
+            return "Movie,Episode"
+        # 其他排序方式默认使用 Series 获取海报
+        return "Movie,Series"
+
     def __generate_from_server(self, service, library, title):
 
         logger.info(f"媒体库 {service.name}：{library['Name']} 开始筛选媒体项")
@@ -8993,33 +9033,19 @@ class YahahaCoverStudio(_PluginBase):
             return self.__handle_boxset_library(service, library, title)
         elif library_type == "playlists":
             return self.__handle_playlist_library(service, library, title)
-        elif library_type == "music":
-            include_types = 'MusicAlbum,Audio'
         else:
-            # 基础类型映射
-            if self.__is_single_image_style():
-                include_types = {
-                    "PremiereDate": "Movie,Series",
-                    "DateCreated": "Movie,Episode",
-                    "Random": "Movie,Series"
-                }.get(self._sort_by, "Movie,Series")
-            else:
-                # 对于多图样式，如果按最新入库排序（DateCreated），也要包含 Episode 以展示剧集的最新动态
-                if self._sort_by == "DateCreated":
-                    include_types = "Movie,Episode"
-                else:
-                    # 其他排序方式默认使用 Series 获取海报
-                    include_types = "Movie,Series"
+            include_types = self.__library_include_types(library_type)
             logger.debug(f"媒体库筛选类型: {include_types}, 排序方式: {self._sort_by}")
         self._seen_keys = set()
         for attempt in range(max_attempts):
             if self._event.is_set():
                 logger.info("检测到停止信号，中断媒体项获取 ...")
                 return False
-                
+
             batch_items = self.__get_items_batch(service, parent_id,
                                               offset=offset, limit=batch_size,
-                                              include_types=include_types)
+                                              include_types=include_types,
+                                              library_type=library_type)
             
             if not batch_items:
                 break  # 没有更多项目可获取
@@ -9104,7 +9130,8 @@ class YahahaCoverStudio(_PluginBase):
             library_id = library.get("ItemId")
         parent_id = library_id
         boxsets = self.__get_items_batch(service, parent_id,
-                                      include_types=include_types)
+                                      include_types=include_types,
+                                      library_type="boxsets")
         
         required_items = self.__get_required_items()
         valid_items = []
@@ -9123,8 +9150,9 @@ class YahahaCoverStudio(_PluginBase):
                     
                 # 获取此BoxSet中的电影
                 movies = self.__get_items_batch(service,
-                                             parent_id=boxset['Id'], 
-                                             include_types=include_types)
+                                             parent_id=boxset['Id'],
+                                             include_types=include_types,
+                                             library_type="boxsets")
                 
                 valid_movies = self.__filter_valid_items(movies)
                 valid_items.extend(valid_movies)
@@ -9153,7 +9181,8 @@ class YahahaCoverStudio(_PluginBase):
             library_id = library.get("ItemId")
         parent_id = library_id
         playlists = self.__get_items_batch(service, parent_id,
-                                      include_types=include_types)
+                                      include_types=include_types,
+                                      library_type="playlists")
         
         required_items = self.__get_required_items()
         valid_items = []
@@ -9172,8 +9201,9 @@ class YahahaCoverStudio(_PluginBase):
                     
                 # 获取此 playlist 中的电影
                 movies = self.__get_items_batch(service,
-                                             parent_id=playlist['Id'], 
-                                             include_types=include_types)
+                                             parent_id=playlist['Id'],
+                                             include_types=include_types,
+                                             library_type="playlists")
                 
                 valid_movies = self.__filter_valid_items(movies)
                 valid_items.extend(valid_movies)
@@ -9191,12 +9221,12 @@ class YahahaCoverStudio(_PluginBase):
             print(f"警告: 无法为播放列表 {service.name}：{library['Name']} 找到有效的图片项目")
             return False
         
-    def __get_items_batch(self, service, parent_id, offset=0, limit=20, include_types=None):
+    def __get_items_batch(self, service, parent_id, offset=0, limit=20, include_types=None, library_type=None):
         # 调用API获取项目
         try:
             if not service:
                 return []
-            
+
             try:
                 if not self._sort_by:
                     sort_by = 'Random'
@@ -9204,10 +9234,18 @@ class YahahaCoverStudio(_PluginBase):
                     sort_by = self._sort_by
                 if self._monitor_sort:
                     sort_by = 'DateCreated'
-                    # 转移监控模式下强制包含 Episode 以获取最新入库的内容
-                    include_types = 'Movie,Episode'
+                    # 转移监控模式下强制包含 Episode 以获取最新入库的内容；
+                    # 音乐/音乐视频/家庭视频/照片/合集/播放列表等媒体库保留各自的筛选类型，
+                    # 否则监控触发的更新会因筛选不到条目而失败。
+                    if str(library_type or "").strip().lower() not in self._monitor_preserved_library_types:
+                        include_types = 'Movie,Episode'
                 if not include_types:
-                    include_types = 'Movie,Series'
+                    # 缺省时按媒体库类型推导，专用媒体库不被默认的 Movie,Series 覆盖
+                    normalized_library_type = str(library_type or "").strip().lower()
+                    include_types = (
+                        self._special_library_item_types.get(normalized_library_type)
+                        or 'Movie,Series'
+                    )
 
                 url = f'[HOST]{self.__media_api_prefix(service)}Items/?api_key=[APIKEY]' \
                       f'&ParentId={parent_id}&SortBy={sort_by}&Limit={limit}' \
@@ -9300,11 +9338,19 @@ class YahahaCoverStudio(_PluginBase):
 
 
     
+    @staticmethod
+    def __with_source_size_limit(item, image_url):
+        """照片/家庭视频/音乐视频素材可能是原始大图，下载时限制尺寸。"""
+        if not image_url or item.get("Type") not in ("MusicVideo", "Video", "Photo"):
+            return image_url
+        delimiter = '&' if '?' in image_url else '?'
+        return f"{image_url}{delimiter}{YahahaCoverStudio._source_size_limit_params}"
+
     def __update_single_image(self, service, library, title, item):
         """更新单图封面"""
         logger.info(f"媒体库 {service.name}：{library['Name']} 从媒体项获取图片")
         updated_item_id = ''
-        image_url = self.__get_image_url(item, service)
+        image_url = self.__with_source_size_limit(item, self.__get_image_url(item, service))
         if not image_url:
             return False
             
@@ -9341,7 +9387,7 @@ class YahahaCoverStudio(_PluginBase):
         updated_item_ids = []
         download_jobs = []
         for i, item in enumerate(items):
-            image_url = self.__get_image_url(item, service)
+            image_url = self.__with_source_size_limit(item, self.__get_image_url(item, service))
             if image_url:
                 download_jobs.append((i, item, image_url))
 
@@ -9664,6 +9710,10 @@ class YahahaCoverStudio(_PluginBase):
             "titles": "Series,Movie",
             "seasons": "Season,Movie",
         }
+        # 音乐/音乐视频/家庭视频/照片等专用媒体库统一统计各自的条目数量
+        preset_types = self._special_library_item_types.get(str(library.get("CollectionType") or "").strip().lower())
+        if preset_types:
+            include_types = {mode: preset_types for mode in include_types}
         for mode, item_types in include_types.items():
             try:
                 response = service.instance.get_data(
@@ -9717,11 +9767,37 @@ class YahahaCoverStudio(_PluginBase):
         """Keep Emby's conventional prefix while using Jellyfin's root API paths."""
         return "emby/" if getattr(service, "type", None) == "emby" else ""
 
+    def __get_media_item_image_url(self, item, service=None):
+        """音乐视频/家庭视频/照片条目的素材地址。
+
+        这几类条目的素材就是自身的主图（照片）或服务器生成的缩略图（视频），
+        不存在剧集那样的父级回退，背景图优先策略也不适用。
+        """
+        prefix = self.__media_api_prefix(service)
+        item_id = item.get("Id")
+        if not item_id:
+            return None
+        image_tags = item.get("ImageTags") or {}
+        if image_tags.get("Primary"):
+            return f'[HOST]{prefix}Items/{item_id}/Images/Primary?tag={image_tags["Primary"]}&api_key=[APIKEY]'
+        if item.get("PrimaryImageTag"):
+            primary_item_id = item.get("PrimaryImageItemId") or item_id
+            return f'[HOST]{prefix}Items/{primary_item_id}/Images/Primary?tag={item.get("PrimaryImageTag")}&api_key=[APIKEY]'
+        if item.get("BackdropImageTags") and len(item["BackdropImageTags"]) > 0:
+            return f'[HOST]{prefix}Items/{item_id}/Images/Backdrop/0?tag={item["BackdropImageTags"][0]}&api_key=[APIKEY]'
+        # 照片的主图就是照片本身，服务端未返回图片标签时也可直接按主图请求
+        if item.get("Type") == "Photo" or item.get("HasPrimaryImage"):
+            return f'[HOST]{prefix}Items/{item_id}/Images/Primary?api_key=[APIKEY]'
+        return None
+
     def __get_image_url(self, item, service=None):
         """
         从媒体项信息中获取图片URL
         """
         # Emby/Jellyfin
+        if item.get("Type") in ("MusicVideo", "Video", "Photo"):
+            return self.__get_media_item_image_url(item, service)
+
         if item['Type'] in 'MusicAlbum,Audio':
             if item.get("ParentBackdropImageTags") and len(item["ParentBackdropImageTags"]) > 0:
                 item_id = item.get("ParentBackdropItemId")
