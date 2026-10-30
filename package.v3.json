@@ -1,13 +1,14 @@
 {
-  "YahahaCoverStudio": {
-    "name": "呀哈哈封面工坊",
-    "description": "全新vue前端,支持可编辑静态封面、动态方案、历史封面、Webhook 入库监控",
+  "CoverStudioAllMedia": {
+    "name": "EMBY封面生成器",
+    "description": "全新vue前端,支持可编辑静态封面、动态方案、历史封面、Webhook 入库监控；支持音乐视频/家庭视频/照片媒体库",
     "labels": "海报,可编辑画布,封面,Emby,Jellyfin,动态",
-    "version": "3.1.0",
+    "version": "3.2.0",
     "icon": "https://raw.githubusercontent.com/justzerock/MoviePilot-Plugins/main/icons/yahaha-cover-studio.png",
     "author": "Corine",
     "level": 1,
     "history": {
+      "v3.2.0": "插件更名为 EMBY封面生成器（ID: CoverStudioAllMedia）：目录、类名、配置前缀、API 路由与前端资源引用全部独立于原版 YahahaCoverStudio，可与原版共存互不冲突；注意配置与历史数据不迁移，需重新配置。",
       "v3.1.0": "媒体库封面生成新增音乐视频（musicvideos）、家庭视频（homevideos）与照片（photos）库支持：自动按库类型筛选条目并取自身主图/缩略图合成封面，预览、数量徽标、Webhook/定时入库监控同步适配；照片与视频素材下载时限制尺寸避免原始大图。",
       "v3.0.0": "适配 MoviePilot V3：导入迁移到 app.sdk 稳定出口（config/events/media/services/network/plugin），事件、媒体服务器链与自有数据存储保持原有行为；索引与版本按 V3 合同重建。",
       "v2.2.11": "修复 Jellyfin 根路径 API 请求，恢复媒体库读取、素材获取与封面上传；Docker 版已使用根路径 API。",
@@ -31,6 +32,6 @@
       "v2.0.0": "更名为呀哈哈封面工坊 / Yahaha Cover Studio，作为新版插件发布；新增 Vue 前端、可编辑布局、方案管理、历史封面、Webhook 入库监控。旧版媒体库封面生成已保留在 legacy-media-cover-generator 分支和 v1-legacy-media-cover-generator tag。"
     },
     "system_version": ">=3.0.0",
-    "author_url": "https://github.com/SuCorine"
+    "author_url": "https://github.com/OUJCDEV"
   }
 }
